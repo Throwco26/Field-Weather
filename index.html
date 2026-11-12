@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#e8ece6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1612" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Field Weather">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Blanding Osceola Weather</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: one scrolling column on a phone, two site cards side by side on wide screens.
+   Each card reads like a field data sheet: alerts, observed now, fire-weather rows, 12-hour grid, forecast text, sun and moon. */
+:root{
+  --bg:#e8ece6;
+  --surface:#f5f7f2;
+  --surface-2:#e1e7de;
+  --ink:#14221a;
+  --muted:#566559;
+  --line:#c5cec2;
+  --accent:#0e6b64;
+  --accent-ink:#ffffff;
+  --warn:#8a4a05;   --warn-bg:#fbe9cf;
+  --crit:#a8231b;   --crit-bg:#fadbd8;
+  --info:#24547f;   --info-bg:#dde9f5;
+  --font-display:'Barlow Condensed','Arial Narrow',system-ui,sans-serif;
+  --font-body:'Barlow',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1612; --surface:#16211b; --surface-2:#1e2c24; --ink:#e3ebe4; --muted:#93a597; --line:#2b3b31;
+    --accent:#55c7bb; --accent-ink:#08201d;
+    --warn:#f0b04a; --warn-bg:#3a2a10;
+    --crit:#ff9188; --crit-bg:#3d1613;
+    --info:#8fbcea; --info-bg:#13283d;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1612; --surface:#16211b; --surface-2:#1e2c24; --ink:#e3ebe4; --muted:#93a597; --line:#2b3b31;
+  --accent:#55c7bb; --accent-ink:#08201d;
+  --warn:#f0b04a; --warn-bg:#3a2a10;
+  --crit:#ff9188; --crit-bg:#3d1613;
+  --info:#8fbcea; --info-bg:#13283d;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:400 16px/1.45 var(--font-body);
+  padding-block:max(16px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap{max-width:1120px;margin-inline:auto}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--font-mono)}
+
+/* page header */
+.top{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.top-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{
+  margin:0;
+  font:700 30px/1 var(--font-display);
+  letter-spacing:.02em;
+  text-transform:uppercase;
+  text-wrap:balance;
+}
+h1 .slash{color:var(--accent)}
+.status{margin:0;font-size:12px;letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+.btn{
+  appearance:none;border:0;border-radius:4px;
+  background:var(--accent);color:var(--accent-ink);
+  font:600 15px/1 var(--font-body);letter-spacing:.03em;
+  min-height:44px;padding:0 18px;cursor:pointer;
+}
+.btn:disabled{opacity:.6;cursor:default}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.jump{display:flex;gap:8px;flex-wrap:wrap}
+.jump a{
+  display:inline-flex;align-items:center;min-height:36px;padding:0 12px;
+  border:1px solid var(--line);border-radius:4px;
+  color:var(--ink);text-decoration:none;font-weight:500;font-size:14px;background:var(--surface);
+}
+
+/* grid of sites */
+#sites{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+@media (min-width:900px){
+  #sites{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+.site{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:6px;
+  min-width:0;
+  scroll-margin-top:12px;
+}
+.blk{padding:16px;border-top:1px solid var(--line);min-width:0}
+.site-head{
+  padding:16px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;
+  background:var(--surface-2);border-radius:6px 6px 0 0;
+}
+h2{margin:0;font:700 28px/1 var(--font-display);letter-spacing:.02em;text-transform:uppercase}
+.sub{margin:4px 0 0;color:var(--muted);font-size:14px}
+.coords{margin:0;font-size:12px;color:var(--muted);letter-spacing:.03em}
+h3{
+  margin:0 0 10px;
+  font:600 13px/1.2 var(--font-body);
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+}
+.note{margin:0;color:var(--muted);font-size:14px}
+.src{margin:10px 0 0;font-size:12px;color:var(--muted);line-height:1.4}
+
+/* alerts */
+.alert-none{margin:0;font-size:14px;color:var(--muted)}
+.alert{border-radius:4px;margin-bottom:8px}
+.alert:last-child{margin-bottom:0}
+.alert summary{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:12px;cursor:pointer;list-style:none;min-height:44px;
+}
+.alert summary::-webkit-details-marker{display:none}
+.alert .ev{font:700 20px/1.1 var(--font-display);letter-spacing:.03em;text-transform:uppercase}
+.alert .until{font-size:13px}
+.alert .body{padding:0 12px 12px;font-size:14px}
+.alert .body p{margin:0 0 8px}
+.alert .body .long{white-space:pre-line;max-height:260px;overflow:auto}
+.sev-crit{background:var(--crit-bg);color:var(--crit)}
+.sev-warn{background:var(--warn-bg);color:var(--warn)}
+.sev-info{background:var(--info-bg);color:var(--info)}
+.alert .body{color:var(--ink)}
+
+/* now */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:center}
+.temp{font:600 clamp(64px,22vw,96px)/.9 var(--font-display);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.temp .deg{font-size:.5em;vertical-align:.5em;margin-left:2px;color:var(--muted)}
+.cond{margin:6px 0 0;font-size:16px;font-weight:500;text-wrap:balance}
+.feels{margin:2px 0 0;font-size:14px;color:var(--muted)}
+.wind{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.compass{width:min(100%,132px);height:auto;display:block}
+.compass .c-ring{fill:none;stroke:var(--line);stroke-width:2}
+.compass .c-tick{stroke:var(--muted);stroke-width:1.5}
+.compass text{fill:var(--muted);font:600 10px var(--font-body)}
+.compass .c-arrow{fill:var(--accent)}
+.wspd{font:600 44px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.wspd small{font:500 16px var(--font-body);color:var(--muted);margin-left:4px}
+.wdir{font-size:14px;color:var(--muted);line-height:1.3}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:12px 16px;margin:16px 0 0;padding:0}
+.stats div{min-width:0}
+.stats dt{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.stats dd{margin:2px 0 0;font:600 22px/1.1 var(--font-display);font-variant-numeric:tabular-nums}
+.stats dd small{font:400 13px var(--font-body);color:var(--muted)}
+
+/* data rows */
+.rows{margin:0;padding:0}
+.row{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:baseline;
+  padding:9px 0;border-bottom:1px solid var(--line);
+}
+.row:first-child{padding-top:0}
+.row:last-child{border-bottom:0;padding-bottom:0}
+.row dt{margin:0;color:var(--muted);font-size:15px}
+.row dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:17px;min-width:0}
+.row dd .chip{margin-left:8px;vertical-align:2px}
+.chip{
+  display:inline-block;padding:3px 6px;border-radius:3px;
+  font:600 11px/1 var(--font-body);letter-spacing:.06em;text-transform:uppercase;
+}
+.chip.crit{background:var(--crit-bg);color:var(--crit)}
+.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.chip.info{background:var(--info-bg);color:var(--info)}
+
+/* hourly */
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:4px}
+table.hourly{border-collapse:separate;border-spacing:0;min-width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+.hourly th,.hourly td{padding:7px 9px;text-align:center;white-space:nowrap;border-bottom:1px solid var(--line)}
+.hourly tr:last-child th,.hourly tr:last-child td{border-bottom:0}
+.hourly thead th{background:var(--surface-2);font-weight:600}
+.hourly th[scope="row"],.hourly thead th:first-child{
+  position:sticky;left:0;z-index:1;text-align:left;font-weight:500;color:var(--muted);
+  background:var(--surface-2);border-right:1px solid var(--line);
+}
+.hourly tbody th[scope="row"]{background:var(--surface)}
+.hourly td.dim{color:var(--muted)}
+.hourly td.hot{color:var(--crit);font-weight:600}
+.hourly td.dry{color:var(--warn);font-weight:600}
+.hourly svg{width:14px;height:14px;vertical-align:-2px;margin-right:3px}
+.hourly svg path{fill:var(--accent)}
+
+/* forecast text */
+.fc p{margin:0 0 10px;font-size:15px}
+.fc p:last-child{margin-bottom:0}
+.fc strong{font-weight:600}
+
+/* sun and moon */
+.sunline{margin:0 0 12px;font-size:15px;font-weight:500}
+.sun{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 8px;margin:0;padding:0}
+.sun div{min-width:0}
+.sun dt{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.sun dd{margin:2px 0 0;font:600 22px/1.1 var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap}
+.moon{margin:14px 0 0;font-size:14px;color:var(--muted)}
+
+/* links */
+.links{display:flex;flex-wrap:wrap;gap:8px}
+.links a{
+  display:inline-flex;align-items:center;min-height:40px;padding:0 12px;
+  border:1px solid var(--accent);border-radius:4px;color:var(--accent);
+  font-weight:600;font-size:14px;text-decoration:none;
+}
+
+/* loading + error */
+.skel{display:grid;gap:10px}
+.skel i{display:block;height:14px;border-radius:3px;background:var(--surface-2);animation:pulse 1.4s ease-in-out infinite}
+.skel i:nth-child(2){width:80%}.skel i:nth-child(3){width:60%}
+@keyframes pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.skel i{animation:none}}
+.err{display:grid;gap:12px;justify-items:start}
+.err p{margin:0}
+.foot{margin:20px 0 0;font-size:12px;line-height:1.5;color:var(--muted);max-width:70ch}
+noscript p{padding:16px;background:var(--warn-bg);color:var(--warn);border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="top-row">
+      <h1>Blanding <span class="slash">/</span> Osceola</h1>
+      <button id="refresh" class="btn" type="button">Refresh</button>
+    </div>
+    <p id="status" class="status mono">Loading from api.weather.gov</p>
+    <nav class="jump" aria-label="Jump to site">
+      <a href="#blanding">Camp Blanding</a>
+      <a href="#osceola">Osceola WMA</a>
+    </nav>
+  </header>
+  <noscript><p>This page needs JavaScript to load weather from the National Weather Service.</p></noscript>
+  <main id="sites"></main>
+  <p class="foot">
+    Weather data comes live from the National Weather Service (api.weather.gov) each time this page loads.
+    Observed conditions are from the nearest reporting station, which can be miles from the site.
+    Fire weather rows and the 12-hour grid are NWS forecast values for the exact point.
+    Sunrise, sunset and moon phase are calculated on your device from NOAA solar equations.
+  </p>
+</div>
+
+<script>
+const API = 'https://api.weather.gov';
+const SITES = [
+  { id:'blanding', name:'Camp Blanding', sub:'Joint Training Center · Clay County', lat:29.9519, lon:-81.9799 },
+  { id:'osceola',  name:'Osceola WMA',   sub:'Osceola National Forest · Baker and Columbia Counties', lat:30.3127, lon:-82.4373 }
+];
+
+/* ---------- small helpers ---------- */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = (v, d = 0) => (v == null || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
+const rnd = v => (v == null || Number.isNaN(v)) ? '—' : String(Math.round(v));
+const cToF = c => c * 9 / 5 + 32;
+
+function qty(q, kind){
+  if (!q || q.value == null || Number.isNaN(q.value)) return null;
+  const u = q.unitCode || '', v = q.value;
+  switch (kind){
+    case 'temp':   return u.endsWith('degF') ? v : cToF(v);
+    case 'speed':
+      if (u.endsWith('m_s-1')) return v * 2.236936;
+      if (u.endsWith('mi_h-1')) return v;
+      if (u.endsWith('kt')) return v * 1.150779;
+      return v * 0.621371;
+    case 'press':  return u.endsWith('inHg') ? v : v / 3386.389;
+    case 'dist':   return u.endsWith('mi') ? v : v / 1609.344;
+    case 'height': return u.endsWith('ft') ? v : v * 3.28084;
+    default:       return v;
+  }
+}
+
+function degToCompass(d){
+  if (d == null) return '';
+  const pts = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return pts[Math.round((((d % 360) + 360) % 360) / 22.5) % 16];
+}
+
+function haversineMi(lat1, lon1, lat2, lon2){
+  const R = 3958.8, r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*r) * Math.cos(lat2*r) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function ageText(ms){
+  const m = Math.max(0, Math.round(ms / 60000));
+  if (m < 2) return 'just now';
+  if (m < 90) return m + ' min ago';
+  const h = Math.floor(m / 60), r = m % 60;
+  return h + ' h' + (r ? ' ' + r + ' min' : '') + ' ago';
+}
+function durText(mins){
+  const m = Math.round(mins);
+  const h = Math.floor(m / 60);
+  return h + ' h ' + String(m % 60).padStart(2, '0') + ' m';
+}
+
+const tf = (tz, o) => new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, o));
+const fmtTime = (ms, tz) => ms == null ? '—' : tf(tz, { hour:'numeric', minute:'2-digit' }).format(new Date(ms));
+const fmtHour = (ms, tz) => tf(tz, { hour:'numeric' }).format(new Date(ms));
+const fmtDayTime = (ms, tz) => tf(tz, { weekday:'short', hour:'numeric', minute:'2-digit' }).format(new Date(ms));
+function localYMD(ms, tz){
+  return tf(tz, { year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(ms)).replace(/(\d+)\/(\d+)\/(\d+)/, '$3-$1-$2').split('-').map(Number);
+}
+
+/* ---------- NWS grid time series ---------- */
+function parseDur(s){
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(s || '');
+  if (!m) return 3600000;
+  return (((+m[1] || 0) * 24 + (+m[2] || 0)) * 60 + (+m[3] || 0)) * 60000;
+}
+function seriesAt(series, t){
+  if (!series || !series.values) return null;
+  for (const x of series.values){
+    const parts = String(x.validTime).split('/');
+    const st = Date.parse(parts[0]);
+    if (Number.isNaN(st)) continue;
+    if (t >= st && t < st + parseDur(parts[1])) return x.value;
+  }
+  return null;
+}
+function gridQty(g, field, t, kind){
+  const s = g && g.properties && g.properties[field];
+  if (!s) return null;
+  return qty({ value: seriesAt(s, t), unitCode: s.uom }, kind);
+}
+function gridRaw(g, field, t){
+  const s = g && g.properties && g.properties[field];
+  if (!s) return null;
+  const v = seriesAt(s, t);
+  return v == null ? null : v;
+}
+
+/* ---------- sun and moon (NOAA solar equations) ---------- */
+const RAD = Math.PI / 180;
+function julianDay(y, m, d){
+  if (m <= 2){ y -= 1; m += 12; }
+  const A = Math.floor(y / 100), B = 2 - A + Math.floor(A / 4);
+  return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
+}
+function solarParams(jd){
+  const T = (jd - 2451545) / 36525;
+  const L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360;
+  const M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+  const e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+  const Mr = M * RAD;
+  const C = Math.sin(Mr) * (1.914602 - T * (0.004817 + 0.000014 * T))
+          + Math.sin(2 * Mr) * (0.019993 - 0.000101 * T)
+          + Math.sin(3 * Mr) * 0.000289;
+  const trueLong = L0 + C;
+  const omega = 125.04 - 1934.136 * T;
+  const lambda = trueLong - 0.00569 - 0.00478 * Math.sin(omega * RAD);
+  const seconds = 21.448 - T * (46.815 + T * (0.00059 - T * 0.001813));
+  const eps0 = 23 + (26 + seconds / 60) / 60;
+  const eps = eps0 + 0.00256 * Math.cos(omega * RAD);
+  const decl = Math.asin(Math.sin(eps * RAD) * Math.sin(lambda * RAD)) / RAD;
+  const y = Math.tan(eps * RAD / 2) ** 2;
+  const L0r = L0 * RAD;
+  const eqTime = 4 / RAD * (y * Math.sin(2 * L0r) - 2 * e * Math.sin(Mr)
+               + 4 * e * y * Math.sin(Mr) * Math.cos(2 * L0r)
+               - 0.5 * y * y * Math.sin(4 * L0r) - 1.25 * e * e * Math.sin(2 * Mr));
+  return { decl, eqTime };
+}
+function eventMinutes(jd0, lat, lon, zenith, rising){
+  let t = 720;
+  for (let i = 0; i < 4; i++){
+    const { decl, eqTime } = solarParams(jd0 + t / 1440);
+    const cosH = Math.cos(zenith * RAD) / (Math.cos(lat * RAD) * Math.cos(decl * RAD)) - Math.tan(lat * RAD) * Math.tan(decl * RAD);
+    if (cosH > 1 || cosH < -1) return null;
+    const H = Math.acos(cosH) / RAD;
+    t = 720 - 4 * (lon + (rising ? H : -H)) - eqTime;
+  }
+  return t;
+}
+function sunDay(y, m, d, lat, lon){
+  const jd0 = julianDay(y, m, d), base = Date.UTC(y, m - 1, d);
+  const at = mins => mins == null ? null : base + mins * 60000;
+  let noon = 720;
+  for (let i = 0; i < 3; i++) noon = 720 - 4 * lon - solarParams(jd0 + noon / 1440).eqTime;
+  return {
+    dawn:    at(eventMinutes(jd0, lat, lon, 96, true)),
+    sunrise: at(eventMinutes(jd0, lat, lon, 90.833, true)),
+    noon:    at(noon),
+    sunset:  at(eventMinutes(jd0, lat, lon, 90.833, false)),
+    dusk:    at(eventMinutes(jd0, lat, lon, 96, false))
+  };
+}
+function moonPhase(ms){
+  const jd = ms / 86400000 + 2440587.5;
+  const p = (((jd - 2451550.1) / 29.530588853) % 1 + 1) % 1;
+  const illum = (1 - Math.cos(2 * Math.PI * p)) / 2;
+  let name;
+  if (p < 0.03 || p >= 0.97) name = 'New moon';
+  else if (p < 0.22) name = 'Waxing crescent';
+  else if (p < 0.28) name = 'First quarter';
+  else if (p < 0.47) name = 'Waxing gibbous';
+  else if (p < 0.53) name = 'Full moon';
+  else if (p < 0.72) name = 'Waning gibbous';
+  else if (p < 0.78) name = 'Last quarter';
+  else name = 'Waning crescent';
+  return { p, illum, name };
+}
+
+/* ---------- network ---------- */
+async function getJSON(url, tries = 2){
+  let lastErr;
+  for (let i = 0; i < tries; i++){
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 15000);
+    try {
+      const r = await fetch(url, { cache: 'no-store', signal: ctl.signal });
+      clearTimeout(timer);
+      if (r.ok) return await r.json();
+      lastErr = new Error('HTTP ' + r.status + ' from ' + url.replace(API, ''));
+      if (r.status < 500) break;
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e.name === 'AbortError' ? new Error('Timed out: ' + url.replace(API, '')) : e;
+    }
+    await new Promise(res => setTimeout(res, 600));
+  }
+  throw lastErr;
+}
+
+async function loadObs(stationsJson, site){
+  const feats = ((stationsJson && stationsJson.features) || []).slice(0, 4);
+  const results = await Promise.allSettled(
+    feats.map(f => getJSON(API + '/stations/' + f.properties.stationIdentifier + '/observations/latest', 1))
+  );
+  for (let i = 0; i < feats.length; i++){
+    const r = results[i];
+    if (r.status !== 'fulfilled') continue;
+    const p = r.value && r.value.properties;
+    if (!p || !p.temperature || p.temperature.value == null) continue;
+    const ts = Date.parse(p.timestamp);
+    if (Date.now() - ts > 3 * 3600000) continue;
+    const c = feats[i].geometry && feats[i].geometry.coordinates;
+    return {
+      id: feats[i].properties.stationIdentifier,
+      name: feats[i].properties.name,
+      distMi: c ? haversineMi(site.lat, site.lon, c[1], c[0]) : null,
+      obs: p
+    };
+  }
+  return null;
+}
+
+async function loadSite(site){
+  const pr = await getJSON(API + '/points/' + site.lat + ',' + site.lon);
+  const p = pr.properties;
+  const tz = p.timeZone || 'America/New_York';
+  const [grid, fc, obs, al] = await Promise.allSettled([
+    getJSON(p.forecastGridData),
+    getJSON(p.forecast),
+    getJSON(p.observationStations + '?limit=5').then(s => loadObs(s, site)),
+    getJSON(API + '/alerts/active?point=' + site.lat + ',' + site.lon)
+  ]);
+  const val = r => r.status === 'fulfilled' ? r.value : null;
+  const why = r => r.status === 'rejected' ? (r.reason && r.reason.message || 'request failed') : null;
+  return {
+    site, tz,
+    wfo: p.gridId, gx: p.gridX, gy: p.gridY,
+    place: p.relativeLocation && p.relativeLocation.properties,
+    grid: val(grid), fc: val(fc), obs: val(obs), alerts: val(al),
+    errs: { grid: why(grid), fc: why(fc), obs: why(obs), alerts: why(al) },
+    loadedAt: Date.now()
+  };
+}
+
+/* ---------- rendering ---------- */
+function chip(text, level){ return '<span class="chip ' + level + '">' + esc(text) + '</span>'; }
+function row(label, value, extra){
+  return '<div class="row"><dt>' + esc(label) + '</dt><dd>' + value + (extra || '') + '</dd></div>';
+}
+
+function compassSvg(fromDeg){
+  const to = fromDeg == null ? null : (fromDeg + 180) % 360;
+  const label = fromDeg == null ? 'Wind direction unavailable' : 'Wind from ' + degToCompass(fromDeg) + ', blowing toward ' + degToCompass(to);
+  return '<svg class="compass" viewBox="0 0 100 100" role="img" aria-label="' + esc(label) + '">'
+    + '<circle class="c-ring" cx="50" cy="50" r="45"/>'
+    + '<line class="c-tick" x1="50" y1="5" x2="50" y2="11"/><line class="c-tick" x1="50" y1="89" x2="50" y2="95"/>'
+    + '<line class="c-tick" x1="5" y1="50" x2="11" y2="50"/><line class="c-tick" x1="89" y1="50" x2="95" y2="50"/>'
+    + '<text x="50" y="21" text-anchor="middle">N</text><text x="50" y="86" text-anchor="middle">S</text>'
+    + '<text x="16" y="54" text-anchor="middle">W</text><text x="84" y="54" text-anchor="middle">E</text>'
+    + (to == null ? '' : '<g transform="rotate(' + Math.round(to) + ' 50 50)"><path class="c-arrow" d="M50 26 L60 66 L50 58 L40 66 Z"/></g>')
+    + '</svg>';
+}
+function miniArrow(fromDeg){
+  if (fromDeg == null) return '';
+  const to = (fromDeg + 180) % 360;
+  return '<svg viewBox="0 0 20 20" aria-hidden="true"><g transform="rotate(' + Math.round(to) + ' 10 10)"><path d="M10 2 L15 16 L10 13 L5 16 Z"/></g></svg>';
+}
+
+function windStr(spd, dir, gust){
+  if (spd == null) return '—';
+  if (spd < 1 && (gust == null || gust < 1)) return 'Calm';
+  return (dir == null ? '' : degToCompass(dir) + ' ') + Math.round(spd) + ' mph'
+    + (gust != null && gust > spd + 1 ? ' · gust ' + Math.round(gust) : '');
+}
+
+function buildCurrent(d, now){
+  const o = d.obs && d.obs.obs;
+  if (o){
+    return {
+      src: 'obs',
+      tempF: qty(o.temperature, 'temp'),
+      dewF: qty(o.dewpoint, 'temp'),
+      rh: o.relativeHumidity && o.relativeHumidity.value != null ? o.relativeHumidity.value : null,
+      spd: qty(o.windSpeed, 'speed'),
+      dir: o.windDirection && o.windDirection.value != null ? o.windDirection.value : null,
+      gust: qty(o.windGust, 'speed'),
+      pres: qty(o.barometricPressure, 'press'),
+      vis: qty(o.visibility, 'dist'),
+      feels: qty(o.heatIndex, 'temp') != null ? qty(o.heatIndex, 'temp') : qty(o.windChill, 'temp'),
+      text: o.textDescription || ''
+    };
+  }
+  const g = d.grid;
+  if (!g) return null;
+  return {
+    src: 'grid',
+    tempF: gridQty(g, 'temperature', now, 'temp'),
+    dewF: gridQty(g, 'dewpoint', now, 'temp'),
+    rh: gridRaw(g, 'relativeHumidity', now),
+    spd: gridQty(g, 'windSpeed', now, 'speed'),
+    dir: gridRaw(g, 'windDirection', now),
+    gust: gridQty(g, 'windGust', now, 'speed'),
+    pres: null, vis: null,
+    feels: gridQty(g, 'apparentTemperature', now, 'temp'),
+    text: ''
+  };
+}
+
+function renderHead(s, d){
+  const loc = d && d.wfo ? ' · NWS ' + d.wfo + ' grid ' + d.gx + ',' + d.gy : '';
+  return '<header class="site-head"><div><h2>' + esc(s.name) + '</h2><p class="sub">' + esc(s.sub) + '</p></div>'
+    + '<p class="coords mono">' + s.lat.toFixed(3) + '°N ' + Math.abs(s.lon).toFixed(3) + '°W' + esc(loc) + '</p></header>';
+}
+
+function renderLoading(s){
+  return renderHead(s, null)
+    + '<div class="blk"><div class="skel" role="status" aria-label="Loading"><i></i><i></i><i></i></div>'
+    + '<p class="src">Loading the latest from api.weather.gov</p></div>';
+}
+
+function renderError(s, err){
+  return renderHead(s, null)
+    + '<div class="blk err"><p><strong>Could not load weather for ' + esc(s.name) + '.</strong></p>'
+    + '<p class="note">' + esc(err && err.message ? err.message : String(err)) + '</p>'
+    + '<button class="btn" type="button" data-retry>Try again</button></div>';
+}
+
+function renderAlerts(d){
+  if (d.errs.alerts) return '<div class="blk"><h3>NWS alerts</h3><p class="note">Alert feed unavailable right now (' + esc(d.errs.alerts) + ').</p></div>';
+  const feats = (d.alerts && d.alerts.features) || [];
+  if (!feats.length) return '<div class="blk"><h3>NWS alerts</h3><p class="alert-none">No active alerts for this point.</p></div>';
+  const rank = { Extreme:0, Severe:1, Moderate:2, Minor:3, Unknown:4 };
+  const items = feats.map(f => f.properties).sort((a, b) => (rank[a.severity] ?? 4) - (rank[b.severity] ?? 4));
+  const html = items.map(a => {
+    const flag = /red flag|fire weather|extreme fire/i.test(a.event || '');
+    const cls = (a.severity === 'Extreme' || a.severity === 'Severe' || /warning/i.test(a.event || '')) ? 'sev-crit'
+              : (flag || a.severity === 'Moderate' || /watch|advisory/i.test(a.event || '')) ? 'sev-warn' : 'sev-info';
+    const endMs = Date.parse(a.ends || a.expires);
+    const until = Number.isNaN(endMs) ? '' : 'until ' + fmtDayTime(endMs, d.tz);
+    return '<details class="alert ' + cls + '"><summary><span class="ev">' + esc(a.event) + '</span><span class="until">' + esc(until) + '</span></summary>'
+      + '<div class="body">' + (a.headline ? '<p><strong>' + esc(a.headline) + '</strong></p>' : '')
+      + (a.description ? '<p class="long">' + esc(a.description) + '</p>' : '')
+      + (a.instruction ? '<p class="long">' + esc(a.instruction) + '</p>' : '')
+      + '</div></details>';
+  }).join('');
+  return '<div class="blk"><h3>NWS alerts</h3>' + html + '</div>';
+}
+
+function renderNow(d, now){
+  const c = buildCurrent(d, now);
+  if (!c) return '<div class="blk"><h3>Now</h3><p class="note">No current conditions available'
+    + (d.errs.obs ? ' (' + esc(d.errs.obs) + ')' : '') + '.</p></div>';
+  const to = c.dir == null ? null : (c.dir + 180) % 360;
+  let srcLine;
+  if (c.src === 'obs'){
+    const ts = Date.parse(d.obs.obs.timestamp);
+    srcLine = 'Observed ' + ageText(now - ts) + ' at ' + esc(d.obs.id) + (d.obs.name ? ' ' + esc(d.obs.name) : '')
+      + (d.obs.distMi != null ? ', ' + Math.round(d.obs.distMi) + ' mi from the site' : '') + '.';
+  } else {
+    srcLine = 'No recent station report. Showing the NWS forecast grid value for this hour.';
+  }
+  const spdTxt = c.spd == null ? '—' : (c.spd < 1 ? '0' : String(Math.round(c.spd)));
+  const dirTxt = c.dir == null
+    ? (c.spd != null && c.spd < 1 ? 'Calm' : 'Direction not reported')
+    : 'from ' + degToCompass(c.dir) + ' (' + Math.round(c.dir) + '°)';
+  const gustTxt = c.gust != null && c.spd != null && c.gust > c.spd + 1 ? 'Gusts ' + Math.round(c.gust) + ' mph' : 'No gusts reported';
+  return '<div class="blk"><h3>Now</h3><div class="hero">'
+    + '<div><div class="temp">' + rnd(c.tempF) + '<span class="deg">°F</span></div>'
+    + (c.text ? '<p class="cond">' + esc(c.text) + '</p>' : '')
+    + (c.feels != null && c.tempF != null && Math.abs(c.feels - c.tempF) >= 2 ? '<p class="feels">Feels like ' + rnd(c.feels) + '°F</p>' : '')
+    + '</div>'
+    + '<div class="wind">' + compassSvg(c.dir)
+    + '<div class="wspd">' + spdTxt + '<small>mph</small></div>'
+    + '<div class="wdir">' + esc(dirTxt) + (to != null ? '<br>blowing toward ' + degToCompass(to) : '') + '<br>' + esc(gustTxt) + '</div></div>'
+    + '</div>'
+    + '<dl class="stats">'
+    + '<div><dt>Humidity</dt><dd>' + rnd(c.rh) + '<small>%</small></dd></div>'
+    + '<div><dt>Dew point</dt><dd>' + rnd(c.dewF) + '<small>°F</small></dd></div>'
+    + (c.pres != null ? '<div><dt>Pressure</dt><dd>' + fmt(c.pres, 2) + '<small> inHg</small></dd></div>' : '')
+    + (c.vis != null ? '<div><dt>Visibility</dt><dd>' + (c.vis >= 10 ? '10+' : fmt(c.vis, 1)) + '<small> mi</small></dd></div>' : '')
+    + '</dl><p class="src">' + srcLine + '</p></div>';
+}
+
+function renderFire(d, now){
+  const g = d.grid;
+  if (!g) return '<div class="blk"><h3>Fire weather · NWS forecast grid</h3><p class="note">Grid forecast unavailable right now'
+    + (d.errs.grid ? ' (' + esc(d.errs.grid) + ')' : '') + '.</p></div>';
+  const rh = gridRaw(g, 'relativeHumidity', now);
+  const dew = gridQty(g, 'dewpoint', now, 'temp');
+  const has20 = g.properties.twentyFootWindSpeed != null;
+  const ws = gridQty(g, has20 ? 'twentyFootWindSpeed' : 'windSpeed', now, 'speed');
+  const wd = gridRaw(g, has20 ? 'twentyFootWindDirection' : 'windDirection', now);
+  const gust = gridQty(g, 'windGust', now, 'speed');
+  const mixFt = gridQty(g, 'mixingHeight', now, 'height');
+  const trSpd = gridQty(g, 'transportWindSpeed', now, 'speed');
+  const trDir = gridRaw(g, 'transportWindDirection', now);
+  const haines = gridRaw(g, 'hainesIndex', now);
+  const lal = gridRaw(g, 'lightningActivityLevel', now);
+  const rfti = gridRaw(g, 'redFlagThreatIndex', now);
+  const disp = gridRaw(g, 'atmosphericDispersionIndex', now);
+  const sky = gridRaw(g, 'skyCover', now);
+  const pop = gridRaw(g, 'probabilityOfPrecipitation', now);
+
+  const rows = [];
+  if (rh != null){
+    const lvl = rh <= 25 ? chip('Very dry', 'crit') : rh <= 35 ? chip('Dry', 'warn') : '';
+    rows.push(row('Relative humidity', Math.round(rh) + '%', lvl));
+  }
+  if (ws != null) rows.push(row('Wind' + (has20 ? ' (20 ft)' : ''), esc(windStr(ws, wd, gust))));
+  if (dew != null) rows.push(row('Dew point', Math.round(dew) + '°F'));
+  if (mixFt != null) rows.push(row('Mixing height', Math.round(mixFt / 100) * 100 + ' ft'));
+  if (trSpd != null) rows.push(row('Transport wind', esc(windStr(trSpd, trDir, null))));
+  if (mixFt != null && trSpd != null){
+    const vr = mixFt * trSpd * 0.868976;
+    rows.push(row('Ventilation rate', Math.round(vr / 100) * 100 + ' kt·ft'));
+  }
+  if (haines != null){
+    const lvl = haines >= 6 ? chip('High', 'crit') : haines === 5 ? chip('Moderate', 'warn') : haines === 4 ? chip('Low', 'info') : chip('Very low', 'info');
+    rows.push(row('Haines index', String(Math.round(haines)), lvl));
+  }
+  if (lal != null) rows.push(row('Lightning activity level', String(Math.round(lal))));
+  if (rfti != null) rows.push(row('Red flag threat index', String(Math.round(rfti))));
+  if (disp != null) rows.push(row('Dispersion index', String(Math.round(disp))));
+  if (sky != null) rows.push(row('Sky cover', Math.round(sky) + '%'));
+  if (pop != null) rows.push(row('Chance of precipitation', Math.round(pop) + '%'));
+  if (!rows.length) return '<div class="blk"><h3>Fire weather · NWS forecast grid</h3><p class="note">The grid has no values for this hour.</p></div>';
+  return '<div class="blk"><h3>Fire weather · this hour</h3><dl class="rows">' + rows.join('') + '</dl>'
+    + '<p class="src">NWS forecast grid for the exact point, not a station reading.</p></div>';
+}
+
+function hourlyRows(g, now, n){
+  const t0 = Math.floor(now / 3600000) * 3600000;
+  const out = [];
+  for (let i = 0; i < n; i++){
+    const t = t0 + i * 3600000 + 60000;
+    out.push({
+      t,
+      temp: gridQty(g, 'temperature', t, 'temp'),
+      rh: gridRaw(g, 'relativeHumidity', t),
+      ws: gridQty(g, 'windSpeed', t, 'speed'),
+      wd: gridRaw(g, 'windDirection', t),
+      gust: gridQty(g, 'windGust', t, 'speed'),
+      pop: gridRaw(g, 'probabilityOfPrecipitation', t)
+    });
+  }
+  return out;
+}
+
+function renderHourly(d, now){
+  if (!d.grid) return '';
+  const hrs = hourlyRows(d.grid, now, 12);
+  if (!hrs.some(h => h.temp != null || h.ws != null)) return '';
+  const head = '<tr><th scope="col">Hour</th>' + hrs.map(h => '<th scope="col">' + esc(fmtHour(h.t, d.tz)) + '</th>').join('') + '</tr>';
+  const cells = (fn, cls) => hrs.map(h => { const r = fn(h); return '<td' + (r.c ? ' class="' + r.c + '"' : '') + '>' + r.v + '</td>'; }).join('');
+  const body = ''
+    + '<tr><th scope="row">Temp °F</th>' + cells(h => ({ v: rnd(h.temp) })) + '</tr>'
+    + '<tr><th scope="row">RH %</th>' + cells(h => ({ v: rnd(h.rh), c: h.rh != null && h.rh <= 25 ? 'hot' : h.rh != null && h.rh <= 35 ? 'dry' : '' })) + '</tr>'
+    + '<tr><th scope="row">Wind mph</th>' + cells(h => ({ v: h.ws == null ? '—' : miniArrow(h.wd) + Math.round(h.ws) })) + '</tr>'
+    + '<tr><th scope="row">Wind from</th>' + cells(h => ({ v: h.wd == null ? '—' : degToCompass(h.wd), c: 'dim' })) + '</tr>'
+    + '<tr><th scope="row">Gust mph</th>' + cells(h => ({ v: h.gust != null && h.ws != null && h.gust > h.ws + 1 ? Math.round(h.gust) : '—', c: 'dim' })) + '</tr>'
+    + '<tr><th scope="row">Rain %</th>' + cells(h => ({ v: rnd(h.pop), c: 'dim' })) + '</tr>';
+  return '<div class="blk"><h3>Next 12 hours</h3><div class="scroll"><table class="hourly"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
+    + '<p class="src">Arrows point the way the wind is blowing. Times are ' + esc(tf(d.tz, { timeZoneName:'short' }).format(new Date(now)).split(', ').pop()) + '.</p></div>';
+}
+
+function renderForecast(d){
+  if (d.errs.fc || !d.fc) return '<div class="blk"><h3>Forecast</h3><p class="note">Forecast text unavailable right now'
+    + (d.errs.fc ? ' (' + esc(d.errs.fc) + ')' : '') + '.</p></div>';
+  const per = ((d.fc.properties && d.fc.properties.periods) || []).slice(0, 3);
+  if (!per.length) return '';
+  return '<div class="blk fc"><h3>Forecast</h3>'
+    + per.map(p => '<p><strong>' + esc(p.name) + '.</strong> ' + esc(p.detailedForecast || p.shortForecast) + '</p>').join('') + '</div>';
+}
+
+function renderSun(d, now){
+  const s = d.site, tz = d.tz;
+  const [y, m, day] = localYMD(now, tz);
+  const today = sunDay(y, m, day, s.lat, s.lon);
+  let line;
+  if (today.sunrise == null || today.sunset == null){
+    line = 'Sun times unavailable.';
+  } else if (now < today.sunrise){
+    line = 'Sun is down. Sunrise in ' + durText((today.sunrise - now) / 60000) + '.';
+  } else if (now < today.sunset){
+    line = 'Sun is up. Sunset in ' + durText((today.sunset - now) / 60000) + '.';
+  } else {
+    const next = new Date(Date.UTC(y, m - 1, day + 1));
+    const tm = sunDay(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), s.lat, s.lon);
+    line = 'Sun is down. Sunrise tomorrow at ' + fmtTime(tm.sunrise, tz) + '.';
+  }
+  const len = today.sunrise != null && today.sunset != null ? durText((today.sunset - today.sunrise) / 60000) : '—';
+  const moon = moonPhase(now);
+  return '<div class="blk"><h3>Sun and moon</h3><p class="sunline">' + esc(line) + '</p>'
+    + '<dl class="sun">'
+    + '<div><dt>First light</dt><dd>' + esc(fmtTime(today.dawn, tz)) + '</dd></div>'
+    + '<div><dt>Sunrise</dt><dd>' + esc(fmtTime(today.sunrise, tz)) + '</dd></div>'
+    + '<div><dt>Solar noon</dt><dd>' + esc(fmtTime(today.noon, tz)) + '</dd></div>'
+    + '<div><dt>Sunset</dt><dd>' + esc(fmtTime(today.sunset, tz)) + '</dd></div>'
+    + '<div><dt>Last light</dt><dd>' + esc(fmtTime(today.dusk, tz)) + '</dd></div>'
+    + '<div><dt>Daylight</dt><dd>' + esc(len) + '</dd></div>'
+    + '</dl>'
+    + '<p class="moon">' + esc(moon.name) + ', about ' + Math.round(moon.illum * 100) + '% lit. First and last light are civil twilight.</p></div>';
+}
+
+function renderLinks(d){
+  const s = d.site;
+  const office = d.wfo ? '<a href="https://www.weather.gov/' + esc(String(d.wfo).toLowerCase()) + '/" target="_blank" rel="noopener">NWS ' + esc(d.wfo) + ' office</a>' : '';
+  return '<div class="blk"><h3>Official sources</h3><div class="links">'
+    + '<a href="https://forecast.weather.gov/MapClick.php?lat=' + s.lat + '&amp;lon=' + s.lon + '" target="_blank" rel="noopener">NWS point forecast</a>'
+    + office + '</div></div>';
+}
+
+function renderSite(d){
+  const now = Date.now();
+  return renderHead(d.site, d)
+    + renderAlerts(d)
+    + renderNow(d, now)
+    + renderFire(d, now)
+    + renderHourly(d, now)
+    + renderForecast(d)
+    + renderSun(d, now)
+    + renderLinks(d);
+}
+
+/* ---------- page wiring ---------- */
+let loading = false, lastLoad = 0;
+const $ = id => document.getElementById(id);
+
+async function loadAll(){
+  if (loading) return;
+  loading = true;
+  const btn = $('refresh'), status = $('status');
+  btn.disabled = true; btn.textContent = 'Refreshing';
+  status.textContent = 'Loading from api.weather.gov';
+  const results = await Promise.allSettled(SITES.map(loadSite));
+  let tz = 'America/New_York', failed = 0;
+  results.forEach((r, i) => {
+    const el = $(SITES[i].id);
+    if (r.status === 'fulfilled'){ tz = r.value.tz; el.innerHTML = renderSite(r.value); }
+    else { failed++; el.innerHTML = renderError(SITES[i], r.reason); }
+  });
+  const stamp = tf(tz, { hour:'numeric', minute:'2-digit', timeZoneName:'short' }).format(new Date());
+  status.textContent = (failed ? failed + ' of ' + SITES.length + ' sites failed. ' : '') + 'Updated ' + stamp + ' · api.weather.gov';
+  lastLoad = Date.now();
+  btn.disabled = false; btn.textContent = 'Refresh';
+  loading = false;
+}
+
+function init(){
+  $('sites').innerHTML = SITES.map(s => '<section class="site" id="' + s.id + '" aria-live="polite">' + renderLoading(s) + '</section>').join('');
+  $('refresh').addEventListener('click', loadAll);
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-retry]')) loadAll(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - lastLoad > 5 * 60000) loadAll(); });
+  window.addEventListener('pageshow', e => { if (e.persisted) loadAll(); });
+  loadAll();
+}
+
+if (typeof document !== 'undefined' && typeof window !== 'undefined') init();
+if (typeof module !== 'undefined') module.exports = { sunDay, moonPhase, qty, parseDur, seriesAt, loadSite, renderSite, degToCompass, localYMD, SITES };
+</script>
+</body>
+</html>
